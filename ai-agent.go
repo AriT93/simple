@@ -100,29 +100,7 @@ type JokeResponse struct {
 }
 
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
-func fetchJoke(input string) (string, error) {
-	// Extract keywords and flags
-	keywords := ""
-	flags := make(map[string]string)
-	parts := strings.Split(input, " ")
-
-	for _, part := range parts {
-		if strings.Contains(part, "=") {
-			// Parse flag
-			flagParts := strings.SplitN(part, "=", 2)
-			if len(flagParts) == 2 {
-				flags[flagParts[0]] = flagParts[1]
-			}
-		} else {
-			// Treat as keyword
-			if keywords == "" {
-				keywords = part
-			} else {
-				keywords += " " + part
-			}
-		}
-	}
-
+func fetchJoke(keywords string, flags map[string]string) (string, error) {
 	// Construct URL
 	url := "https://v2.jokeapi.dev/joke/Any"
 	params := []string{}
@@ -277,7 +255,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Update the viewport content
 				m.viewport.SetContent(strings.Join(m.messages, "\n"))
 
-				cmd = func() tea.Msg {
+				// Capture keywords and flags in the closure
+				cmd := func() tea.Msg {
 					// Create a context with a timeout
 					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 					defer cancel()
