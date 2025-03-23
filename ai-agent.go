@@ -231,29 +231,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-	}
-
-	case errMsg:
-		m.messages = append(m.messages, "Error fetching joke: "+msg.Error())
-		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
-		m.viewport.GotoBottom()
-		m.processing = false
-		m.textInput.Focus()
-		return m, nil
-
-	case tea.Cmd:
-		return m, msg
-
-	case error:
-		m.err = msg
-		return m, nil
-
-	default:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
-	}
 
 	// Handle text input updates
 	m.textInput, cmd = m.textInput.Update(msg)
