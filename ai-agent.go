@@ -239,6 +239,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
+		}
+	}
+
 	m.textInput, cmd = m.textInput.Update(msg)
 	return m, cmd
 }
