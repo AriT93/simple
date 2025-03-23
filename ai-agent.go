@@ -93,6 +93,8 @@ type JokeResponse struct {
 	ID   int    `json:"id"`
 	Safe bool   `json:"safe"`
 	Lang string `json:"lang"`
+}
+
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
 func fetchJoke(input string) (string, error) {
 	// Extract keywords and flags
