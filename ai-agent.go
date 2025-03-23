@@ -34,11 +34,16 @@ func initialModel() model {
 	ti.Focus()
 	ti.Width = 80
 
+	// Create a colorful spinner
+	s := spinner.New()
+	s.Spinner = spinner.Monkey
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")) // Red
+
 	return model{
 		messages:   []string{"Welcome to AI Assistant!", "Type 'help' for instructions or start typing your request."},
 		viewport:   vp,
 		textInput:  ti,
-		spinner:    spinner.New(),
+		spinner:    s,
 		processing: false,
 	}
 }
