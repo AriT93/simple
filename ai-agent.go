@@ -186,12 +186,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				input := m.textInput.Value()
 				m.textInput.Reset()
 
-				m.messages = append(m.messages, "AI: "+string(simulateAIResponse(input).(jokeMsg)))
+				m.messages = append(m.messages, "AI: processing your request...")
 
 				cmd = func() tea.Msg {
 					joke, err := fetchJoke(input)
 					if err != nil {
-						return errMsg(err)
+						return errMsg("deee")
 					}
 					return jokeMsg(joke)
 				}
