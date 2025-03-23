@@ -222,7 +222,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						helpText := simulateAIResponse(input).(jokeMsg)
 						m.jokeChan <- helpText
 					}()
-					return m, m.spinner.Tick
+					return m, nil
 				}
 
 				m.processing = true
