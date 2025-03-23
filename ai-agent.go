@@ -21,6 +21,7 @@ type model struct {
 	err        error
 	spinner    spinner.Model
 	processing bool
+	jokeChan   chan tea.Msg
 }
 
 func initialModel() model {
@@ -42,6 +43,7 @@ func initialModel() model {
 		messages:   []string{"Welcome to AI Agent! Type a message and press Enter to chat."},
 		spinner:    s,
 		processing: false,
+		jokeChan:   make(chan tea.Msg),
 	}
 }
 
@@ -218,13 +220,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.SetContent(strings.Join(m.messages, "\n"))
 
 				cmd = func() tea.Msg {
-					joke, err := fetchJoke(input)
-					if err != nil {
-						return errMsg{err}
-					}
-					return jokeMsg(joke)
+					go func() {
+						joke, err := fetchJoke(input)
+						if err != nil {
+							m.jokeChan <- errMsg{err}
+							return
+						}
+						m.jokeChan <- jokeMsg(joke)
+					}()
+					return m.spinner.Tick
 				}
-				return m, tea.Batch(cmd, m.spinner.Tick)
+				return m, cmd
 			}
 		}
 	case jokeMsg:
@@ -245,10 +251,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
 		}
+	case tea.Cmd:
+		// Ignore other commands
+		return m, nil
 	}
 
 	m.textInput, cmd = m.textInput.Update(msg)
-	return m, cmd
+
+	select {
+	case res := <-m.jokeChan:
+		return m.handleJokeResponse(res)
+	default:
+		return m, cmd
+	}
+}
+
+func (m model) handleJokeResponse(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case jokeMsg:
+		m.processing = false
+		m.textInput.Focus()
+		m.messages = append(m.messages, string(msg))
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		return m, nil
+	case errMsg:
+		m.processing = false
+		m.textInput.Focus()
+		m.messages = append(m.messages, "Error: "+msg.Error())
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		return m, nil
+	default:
+		return m, nil
+	}
 }
 
 func (m model) View() string {
