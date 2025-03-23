@@ -184,9 +184,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc":
-			return m, tea.Quit
-		case "quit":
+		case "ctrl+c", "esc", "quit":
 			return m, tea.Quit
 		case "enter":
 			if m.textInput.Value() != "" && !m.processing {
@@ -236,152 +234,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 
-				// Construct URL
-				url := "https://v2.jokeapi.dev/joke/Any"
-				params := []string{}
-
-				if keywords != "" {
-					params = append(params, "contains="+keywords)
-				}
-
-				for key, value := range flags {
-					params = append(params, key+"="+value)
-				}
-
-				if len(params) > 0 {
-					url += "?" + strings.Join(params, "&")
-				}
-
 				// Update the viewport content
 				m.viewport.SetContent(strings.Join(m.messages, "\n"))
 
-				// Capture keywords and flags in the closure
-				cmd := func() tea.Msg {
-					// Construct URL
-					url := "https://v2.jokeapi.dev/joke/Any"
-					params := []string{}
-
-					if keywords != "" {
-						params = append(params, "contains="+keywords)
-					}
-
-					for key, value := range flags {
-						params = append(params, key+"="+value)
-					}
-
-					if len(params) > 0 {
-						url += "?" + strings.Join(params, "&")
-					}
-
-					// Create a context with a timeout
-					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-					defer cancel()
-
-					req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+				// Fetch joke in a goroutine
+				go func() {
+					// Construct URL and fetch joke
+					joke, err := fetchJoke(keywords, flags)
 					if err != nil {
-						return errMsg{fmt.Errorf("failed to create request: %w", err)}
+						m.jokeChan <- errMsg{err}
+						return
 					}
+					m.jokeChan <- jokeMsg(joke)
+				}()
 
-					// Make the HTTP request
-					client := &http.Client{}
-					resp, err := client.Do(req)
-
-					if err != nil {
-						if ctx.Err() == context.DeadlineExceeded {
-							return errMsg{fmt.Errorf("API request timed out after 2 seconds")}
-						}
-						return errMsg{fmt.Errorf("API request failed: %w", err)}
-					}
-					defer resp.Body.Close()
-
-					// Check the response status code
-					if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-						return errMsg{fmt.Errorf("API request failed with status code: %d", resp.StatusCode)}
-					}
-
-					// Read the response body
-					body, err := io.ReadAll(resp.Body)
-					if err != nil {
-						return errMsg{fmt.Errorf("failed to read response body: %w", err)}
-					}
-
-					// Unmarshal the JSON response
-					var joke JokeResponse
-					err = json.Unmarshal(body, &joke)
-					if err != nil {
-						return errMsg{fmt.Errorf("failed to unmarshal JSON: %w", err)}
-					}
-
-					// Format the joke based on its type
-					var formattedJoke string
-					if joke.Type == "single" {
-						formattedJoke = "Joke: " + joke.Joke
-					} else if joke.Type == "twopart" {
-						formattedJoke = "Setup: " + joke.Setup + "\nDelivery: " + joke.Delivery
-					} else {
-						return errMsg{fmt.Errorf("unknown joke type: %s", joke.Type)}
-					}
-
-					formattedJoke = fmt.Sprintf("Status Code: %d\n%s", resp.StatusCode, formattedJoke)
-					return jokeMsg(formattedJoke)
-				}
-				return m, cmd
+				return m, m.spinner.Tick
 			}
 		}
-	case spinner.TickMsg:
 
-					// Make the HTTP request
-					client := &http.Client{}
-					resp, err := client.Do(req)
-
-					if err != nil {
-						if ctx.Err() == context.DeadlineExceeded {
-							m.jokeChan <- errMsg{fmt.Errorf("API request timed out after 2 seconds")}
-							return m.spinner.Tick
-						}
-						m.jokeChan <- errMsg{fmt.Errorf("API request failed: %w", err)}
-						return m.spinner.Tick
-					}
-					defer resp.Body.Close()
-
-					// Check the response status code
-					if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-						m.jokeChan <- errMsg{fmt.Errorf("API request failed with status code: %d", resp.StatusCode)}
-						return m.spinner.Tick
-					}
-
-					// Read the response body
-					body, err := io.ReadAll(resp.Body)
-					if err != nil {
-						m.jokeChan <- errMsg{fmt.Errorf("failed to read response body: %w", err)}
-						return m.spinner.Tick
-					}
-
-					// Unmarshal the JSON response
-					var joke JokeResponse
-					err = json.Unmarshal(body, &joke)
-					if err != nil {
-						m.jokeChan <- errMsg{fmt.Errorf("failed to unmarshal JSON: %w", err)}
-						return m.spinner.Tick
-					}
-
-					// Format the joke based on its type
-					var formattedJoke string
-					if joke.Type == "single" {
-						formattedJoke = "Joke: " + joke.Joke
-					} else if joke.Type == "twopart" {
-						formattedJoke = "Setup: " + joke.Setup + "\nDelivery: " + joke.Delivery
-					} else {
-						m.jokeChan <- errMsg{fmt.Errorf("unknown joke type: %s", joke.Type)}
-						return m.spinner.Tick
-					}
-
-					m.jokeChan <- jokeMsg(fmt.Sprintf("Status Code: %d\n%s", resp.StatusCode, formattedJoke))
-					return m.spinner.Tick
-				}
-				return m, cmd
-			}
-		}
 	case spinner.TickMsg:
 		if m.processing {
 			var cmd tea.Cmd
@@ -389,9 +259,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
-	case tea.Cmd:
-		// Ignore other commands
-		return m, nil
+
+	case jokeMsg:
+		return m.handleJokeResponse(msg)
+
+	case errMsg:
+		return m.handleJokeResponse(msg)
 	}
 
 	m.textInput, cmd = m.textInput.Update(msg)
