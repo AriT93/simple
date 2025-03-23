@@ -235,11 +235,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, _ = m.viewport.Update(msg)
 
 	if msg != nil {
-		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
-		m.viewport.GotoBottom()
-	}
-
-	return m, cmd
 }
 
 // Custom message types for handling joke and error responses
