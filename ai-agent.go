@@ -236,22 +236,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Simulate AI response
 				m.messages = append(m.messages, "AI: Processing your request...")
 
-				// Construct URL
-				url := "https://v2.jokeapi.dev/joke/Any"
-				params := []string{}
-
-				if keywords != "" {
-					params = append(params, "contains="+keywords)
-				}
-
-				for key, value := range flags {
-					params = append(params, key+"="+value)
-				}
-
-				if len(params) > 0 {
-					url += "?" + strings.Join(params, "&")
-				}
-
 				// Update the viewport content
 				m.viewport.SetContent(strings.Join(m.messages, "\n"))
 
@@ -259,6 +243,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Create a context with a timeout
 					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 					defer cancel()
+
+					// Construct URL
+					url := "https://v2.jokeapi.dev/joke/Any"
 
 					// Create a new request with the context
 					req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -329,6 +316,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.Cmd:
 		// Ignore other commands
 		return m, nil
+	}
+
+	// Construct URL
+	url := "https://v2.jokeapi.dev/joke/Any"
+	params := []string{}
+
+	if keywords != "" {
+		params = append(params, "contains="+keywords)
+	}
+
+	for key, value := range flags {
+		params = append(params, key+"="+value)
+	}
+
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
 	}
 
 	m.textInput, cmd = m.textInput.Update(msg)
