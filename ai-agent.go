@@ -244,9 +244,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 					defer cancel()
 
-					// Construct URL
-					url := "https://v2.jokeapi.dev/joke/Any"
-
 					// Create a new request with the context
 					req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 					if err != nil {
