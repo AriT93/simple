@@ -145,21 +145,33 @@ var _ = Describe("Joke Client", func() {
 			BeforeEach(func() {
 				// Create a test server that returns errors
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					fmt.Printf("Error test server received request: %s\n", r.URL.Path)
+					fmt.Printf("Error test server received request: %s with query: %v\n", r.URL.Path, r.URL.Query())
 					
-					if strings.Contains(r.URL.Path, "Error") {
+					// Extract the category from the path
+					pathParts := strings.Split(r.URL.Path, "/")
+					category := ""
+					if len(pathParts) > 1 {
+						category = pathParts[len(pathParts)-1]
+					}
+					
+					fmt.Printf("Category extracted: %s\n", category)
+					
+					if strings.Contains(category, "Error") {
+						fmt.Println("Returning 500 error")
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					} 
 					
-					if strings.Contains(r.URL.Path, "BadJSON") {
+					if strings.Contains(category, "BadJSON") {
+						fmt.Println("Returning invalid JSON")
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
 						w.Write([]byte(`{invalid json`))
 						return
 					} 
 					
-					if strings.Contains(r.URL.Path, "UnknownType") {
+					if strings.Contains(category, "UnknownType") {
+						fmt.Println("Returning unknown joke type")
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
 						w.Write([]byte(`{
@@ -175,8 +187,25 @@ var _ = Describe("Joke Client", func() {
 					}
 					
 					// Default response for any other path
+					fmt.Println("Returning default response")
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(`{}`))
+					w.Write([]byte(`{
+						"error": false,
+						"category": "Misc",
+						"type": "single",
+						"joke": "Default joke response",
+						"flags": {
+							"nsfw": false,
+							"religious": false,
+							"political": false,
+							"racist": false,
+							"sexist": false,
+							"explicit": false
+						},
+						"id": 3,
+						"safe": true,
+						"lang": "en"
+					}`))
 				}))
 				
 				// Override the client's BaseURL to use our test server
@@ -184,14 +213,14 @@ var _ = Describe("Joke Client", func() {
 			})
 
 			It("should handle server errors", func() {
-				_, err := client.FetchJoke("Error")
+				_, err := client.FetchJoke("Error joke")
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("API request failed with status code: 500"))
 			})
 
 			It("should handle invalid JSON", func() {
-				_, err := client.FetchJoke("BadJSON")
+				_, err := client.FetchJoke("BadJSON joke")
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to unmarshal JSON"))
