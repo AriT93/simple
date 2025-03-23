@@ -79,42 +79,42 @@ type JokeResponse struct {
 
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
 func fetchJoke(input string) (string, error) {
-	// Separate the query from the flags
-	parts := strings.Split(input, " ")
-	query := ""
+	// Extract keywords and flags
+	keywords := ""
 	flags := make(map[string]string)
+	parts := strings.Split(input, " ")
 
 	for _, part := range parts {
 		if strings.Contains(part, "=") {
+			// Parse flag
 			flagParts := strings.SplitN(part, "=", 2)
 			if len(flagParts) == 2 {
-				flag := flagParts[0]
-				value := flagParts[1]
-				flags[flag] = value
+				flags[flagParts[0]] = flagParts[1]
 			}
 		} else {
-			if query == "" {
-				query = part
+			// Treat as keyword
+			if keywords == "" {
+				keywords = part
 			} else {
-				query += " " + part
+				keywords += " " + part
 			}
 		}
 	}
 
-	// Construct the API URL with the query and flags
+	// Construct URL
 	url := "https://v2.jokeapi.dev/joke/Any"
-	if query != "" {
-		url += "?contains=" + query
+	params := []string{}
+
+	if keywords != "" {
+		params = append(params, "contains="+keywords)
 	}
 
-	if category, ok := flags["category"]; ok {
-		url += "&category=" + category
+	for key, value := range flags {
+		params = append(params, key+"="+value)
 	}
-	if blacklistFlags, ok := flags["blacklistFlags"]; ok {
-		url += "&blacklistFlags=" + blacklistFlags
-	}
-	if jokeType, ok := flags["type"]; ok {
-		url += "&type=" + jokeType
+
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
 	}
 
 	// Make the HTTP request
