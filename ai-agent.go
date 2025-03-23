@@ -191,7 +191,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textInput.Reset()
 
 				if input == "help" {
-					m.messages = append(m.messages, string(simulateAIResponse(input).(jokeMsg)))
+					helpMsg := helpMessage()
+					m.messages = append(m.messages, helpMsg)
 					m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
 					m.viewport.GotoBottom()
 					m.processing = false
