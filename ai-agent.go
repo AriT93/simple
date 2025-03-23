@@ -94,7 +94,12 @@ func fetchJoke(input string) (string, error) {
 	flags := make(map[string]string)
 	parts := strings.Split(input, " ")
 
-	// First, extract the keywords (the words before any flags)
+	// Extract keywords and flags
+	keywords := ""
+	flags := make(map[string]string)
+	parts := strings.Split(input, " ")
+
+	// Extract keywords (the words before any flags)
 	keywordParts := []string{}
 	for _, part := range parts {
 		if strings.Contains(part, "=") {
@@ -104,7 +109,7 @@ func fetchJoke(input string) (string, error) {
 	}
 	keywords = strings.Join(keywordParts, " ")
 
-	// Then, extract the flags
+	// Extract flags
 	for _, part := range parts {
 		if strings.Contains(part, "=") {
 			flagParts := strings.SplitN(part, "=", 2)
@@ -114,7 +119,7 @@ func fetchJoke(input string) (string, error) {
 		}
 	}
 
-	// Construct URL
+	// Construct the API URL
 	url := "https://v2.jokeapi.dev/joke/Any"
 	params := []string{}
 
