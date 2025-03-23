@@ -147,22 +147,14 @@ var _ = Describe("Joke Client", func() {
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					fmt.Printf("Error test server received request: %s with query: %v\n", r.URL.Path, r.URL.Query())
 					
-					// Extract the category from the path
-					pathParts := strings.Split(r.URL.Path, "/")
-					category := ""
-					if len(pathParts) > 1 {
-						category = pathParts[len(pathParts)-1]
-					}
-					
-					fmt.Printf("Category extracted: %s\n", category)
-					
-					if strings.Contains(category, "Error") {
+					// For error tests, we're using the path directly to determine the response
+					if strings.Contains(r.URL.Path, "/Error") {
 						fmt.Println("Returning 500 error")
 						w.WriteHeader(http.StatusInternalServerError)
 						return
 					} 
 					
-					if strings.Contains(category, "BadJSON") {
+					if strings.Contains(r.URL.Path, "/BadJSON") {
 						fmt.Println("Returning invalid JSON")
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -170,7 +162,7 @@ var _ = Describe("Joke Client", func() {
 						return
 					} 
 					
-					if strings.Contains(category, "UnknownType") {
+					if strings.Contains(r.URL.Path, "/UnknownType") {
 						fmt.Println("Returning unknown joke type")
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
@@ -213,21 +205,27 @@ var _ = Describe("Joke Client", func() {
 			})
 
 			It("should handle server errors", func() {
-				_, err := client.FetchJoke("Error joke")
+				// Override the category directly for this test
+				client.BaseURL = server.URL + "/joke/Error"
+				_, err := client.FetchJoke("any joke")
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("API request failed with status code: 500"))
 			})
 
 			It("should handle invalid JSON", func() {
-				_, err := client.FetchJoke("BadJSON joke")
+				// Override the category directly for this test
+				client.BaseURL = server.URL + "/joke/BadJSON"
+				_, err := client.FetchJoke("any joke")
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to unmarshal JSON"))
 			})
 
 			It("should handle unknown joke types", func() {
-				_, err := client.FetchJoke("UnknownType")
+				// Override the category directly for this test
+				client.BaseURL = server.URL + "/joke/UnknownType"
+				_, err := client.FetchJoke("any joke")
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("unknown joke type"))
