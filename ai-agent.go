@@ -222,7 +222,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						helpText := simulateAIResponse(input).(jokeMsg)
 						m.jokeChan <- helpText
 					}()
-					return m, nil
+					return m, m.spinner.Tick
 				}
 
 				m.processing = true
@@ -256,13 +256,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.Focus()
 		m.messages = append(m.messages, string(msg))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		return m, nil
+		return m, m.spinner.Tick
 	case errMsg:
 		m.processing = false
 		m.textInput.Focus()
 		m.messages = append(m.messages, "Error: "+msg.Error())
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		return m, nil
+		return m, m.spinner.Tick
 	case spinner.TickMsg:
 		if m.processing {
 			var cmd tea.Cmd
@@ -291,13 +291,13 @@ func (m model) handleJokeResponse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.Focus()
 		m.messages = append(m.messages, string(msg))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		return m, nil
+		return m, m.spinner.Tick
 	case errMsg:
 		m.processing = false
 		m.textInput.Focus()
 		m.messages = append(m.messages, "Error: "+msg.Error())
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		return m, nil
+		return m, m.spinner.Tick
 	}
 	return m, nil
 }
