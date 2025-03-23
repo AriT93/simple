@@ -186,16 +186,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				input := m.textInput.Value()
 				m.textInput.Reset()
 
-				m.messages = append(m.messages, "AI: processing your request...")
+				if input == "help" {
+					m.messages = append(m.messages, string(simulateAIResponse(input).(jokeMsg)))
+					m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
+					m.viewport.GotoBottom()
+					m.processing = false
+					m.textInput.Focus()
+					return m, nil
+				} else if input == "quit" {
+					return m, tea.Quit
+				} else {
 
-				cmd = func() tea.Msg {
-					joke, err := fetchJoke(input)
-					if err != nil {
-						return errMsg("deee")
+					m.messages = append(m.messages, "AI: processing your request...")
+
+					cmd = func() tea.Msg {
+						joke, err := fetchJoke(input)
+						if err != nil {
+							return errMsg("deee")
+						}
+						return jokeMsg(joke)
 					}
-					return jokeMsg(joke)
+					return m, cmd
 				}
-				return m, cmd
 			}
 		}
 	case jokeMsg:
@@ -259,6 +271,7 @@ func (m model) View() string {
 		m.viewport.View(),
 		status,
 		m.textInput.View(),
+		"Type 'help' for instructions or 'quit' to exit.",
 		"Press Ctrl+C to quit.",
 	)
 }
