@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	// "github.com/yourusername/yourproject/utils" // Removed or replace with the correct package
 )
 
 type model struct {
@@ -24,7 +23,6 @@ type model struct {
 	err        error
 	spinner    spinner.Model
 	processing bool
-	jokeChan   chan tea.Msg
 }
 
 func initialModel() model {
@@ -33,7 +31,7 @@ func initialModel() model {
 
 	ti := textinput.New()
 	ti.Placeholder = "Ask for a joke..."
-	ti.Focus() // Ensure text input is focused from the start
+	ti.Focus()
 	ti.Width = 80
 
 	return model{
@@ -46,17 +44,15 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	// Return both commands to ensure input is ready
 	return tea.Batch(textinput.Blink, m.spinner.Tick)
 }
 
-type jokeMsg string
-type errMsg struct {
-	err error
+type jokeResponseMsg struct {
+	joke string
 }
 
-func (e errMsg) Error() string {
-	return e.err.Error()
+type errorResponseMsg struct {
+	err error
 }
 
 const helpMessage = `
@@ -102,83 +98,111 @@ type JokeResponse struct {
 	Lang string `json:"lang"`
 }
 
-// fetchJoke fetches a joke from the JokeAPI and accepts flags
-func fetchJoke(keywords string, flags map[string]string) (string, error) {
-	// Construct URL
-	url := "https://v2.jokeapi.dev/joke/Any"
-	params := []string{}
+// Command to fetch a joke asynchronously
+func fetchJokeCmd(input string) tea.Cmd {
+	return func() tea.Msg {
+		// Parse input to extract category and joke type
+		input = strings.ToLower(input)
 
-	if keywords != "" {
-		params = append(params, "contains="+keywords)
-	}
+		// Initialize parameters
+		jokeCategory := "Any" // Default category
+		jokeType := ""        // No specific type by default
+		blacklistFlags := []string{}
 
-	for key, value := range flags {
-		params = append(params, key+"="+value)
-	}
-
-	if len(params) > 0 {
-		url += "?" + strings.Join(params, "&")
-	}
-
-	// Create a context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	// Create a new request with the context
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Make the HTTP request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("API request timed out after 2 seconds")
+		// Check for joke type
+		if strings.Contains(input, "twopart") {
+			jokeType = "twopart"
+		} else if strings.Contains(input, "single") {
+			jokeType = "single"
 		}
-		return "", fmt.Errorf("API request failed: %w", err)
-	}
-	defer resp.Body.Close()
 
-	// Check the response status code
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
+		// Check for categories
+		categories := []string{"programming", "misc", "dark", "pun", "spooky", "christmas"}
+		for _, category := range categories {
+			if strings.Contains(input, category) {
+				jokeCategory = strings.Title(category) // Capitalize first letter for API
+				break
+			}
+		}
 
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
+		// Check for blacklist flags
+		blacklistOptions := []string{"nsfw", "religious", "political", "racist", "sexist", "explicit"}
+		for _, flag := range blacklistOptions {
+			if strings.Contains(input, "no "+flag) || strings.Contains(input, "not "+flag) {
+				blacklistFlags = append(blacklistFlags, flag)
+			}
+		}
 
-	// Unmarshal the JSON response
-	var joke JokeResponse
-	err = json.Unmarshal(body, &joke)
-	if err != nil {
-		return "", fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
+		// Construct URL with proper path parameters
+		url := fmt.Sprintf("https://v2.jokeapi.dev/joke/%s", jokeCategory)
 
-	// Format the joke based on its type
-	var formattedJoke string
-	if joke.Type == "single" {
-		formattedJoke = "Joke: " + joke.Joke
-	} else if joke.Type == "twopart" {
-		formattedJoke = "Setup: " + joke.Setup + "\nDelivery: " + joke.Delivery
-	} else {
-		return "", fmt.Errorf("unknown joke type: %s", joke.Type)
-	}
+		// Add query parameters
+		params := []string{}
 
-	return fmt.Sprintf("Status Code: %d\n%s", resp.StatusCode, formattedJoke), nil
-}
+		if jokeType != "" {
+			params = append(params, "type="+jokeType)
+		}
 
-// simulateAIResponse is a placeholder for the help command
-func simulateAIResponse(msg string) tea.Msg {
-	if msg == "help" {
-		return jokeMsg(helpMessage)
+		if len(blacklistFlags) > 0 {
+			params = append(params, "blacklistFlags="+strings.Join(blacklistFlags, ","))
+		}
+
+		if len(params) > 0 {
+			url += "?" + strings.Join(params, "&")
+		}
+
+		// Create a context with a timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Create a new request with the context
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return errorResponseMsg{err: fmt.Errorf("failed to create request: %w", err)}
+		}
+
+		// Make the HTTP request
+		client := &http.Client{}
+		resp, err := client.Do(req)
+
+		if err != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				return errorResponseMsg{err: fmt.Errorf("API request timed out after 5 seconds")}
+			}
+			return errorResponseMsg{err: fmt.Errorf("API request failed: %w", err)}
+		}
+		defer resp.Body.Close()
+
+		// Check the response status code
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return errorResponseMsg{err: fmt.Errorf("API request failed with status code: %d", resp.StatusCode)}
+		}
+
+		// Read the response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return errorResponseMsg{err: fmt.Errorf("failed to read response body: %w", err)}
+		}
+
+		// Unmarshal the JSON response
+		var joke JokeResponse
+		err = json.Unmarshal(body, &joke)
+		if err != nil {
+			return errorResponseMsg{err: fmt.Errorf("failed to unmarshal JSON: %w", err)}
+		}
+
+		// Format the joke based on its type
+		var formattedJoke string
+		if joke.Type == "single" {
+			formattedJoke = joke.Joke
+		} else if joke.Type == "twopart" {
+			formattedJoke = fmt.Sprintf("%s\n\n%s", joke.Setup, joke.Delivery)
+		} else {
+			return errorResponseMsg{err: fmt.Errorf("unknown joke type: %s", joke.Type)}
+		}
+
+		return jokeResponseMsg{joke: formattedJoke}
 	}
-	return jokeMsg("AI: I received your message: \"" + msg + "\"")
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -191,120 +215,72 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyEnter:
-			if m.textInput.Value() != "" && !m.processing {
-				input := m.textInput.Value()
-				m.textInput.Reset()
-
-				// Handle help command
-				if input == "help" {
-					m.processing = true
-					m.textInput.Blur()
-					m.messages = append(m.messages, "You: "+input)
-					go func() {
-						helpText := simulateAIResponse(input).(jokeMsg)
-						m.jokeChan <- helpText
-					}()
-					return m, m.spinner.Tick
-				}
-
-				m.processing = true
-				m.textInput.Blur()
-
-				// Append the user's message to the messages
-				m.messages = append(m.messages, "You: "+input)
-
-				// Simulate AI response
-				m.messages = append(m.messages, "AI: Processing your request...")
-
-				// Extract keywords and flags
-				keywords := ""
-				flags := make(map[string]string)
-				parts := strings.Split(input, " ")
-
-				for _, part := range parts {
-					if strings.Contains(part, "=") {
-						// Parse flag
-						flagParts := strings.SplitN(part, "=", 2)
-						if len(flagParts) == 2 {
-							flags[flagParts[0]] = flagParts[1]
-						}
-					} else {
-						// Treat as keyword
-						if keywords == "" {
-							keywords = part
-						} else {
-							keywords += " " + part
-						}
-					}
-				}
-
-				// Update the viewport content
-				m.viewport.SetContent(strings.Join(m.messages, "\n"))
-
-				// Fetch joke in a goroutine
-				go func() {
-					// Construct URL and fetch joke
-					joke, err := fetchJoke(keywords, flags)
-					if err != nil {
-						m.jokeChan <- errMsg{err}
-						return
-					}
-					m.jokeChan <- jokeMsg(joke)
-				}()
-
-				return m, m.spinner.Tick
+			input := m.textInput.Value()
+			if input == "" {
+				return m, nil
 			}
+
+			// Handle quit command
+			if input == "quit" || input == "exit" {
+				return m, tea.Quit
+			}
+
+			// Reset input
+			m.textInput.Reset()
+
+			// Add user message to history
+			m.messages = append(m.messages, "You: "+input)
+			m.viewport.SetContent(strings.Join(m.messages, "\n"))
+			m.viewport.GotoBottom()
+
+			// Handle help command
+			if input == "help" {
+				m.messages = append(m.messages, helpMessage)
+				m.viewport.SetContent(strings.Join(m.messages, "\n"))
+				m.viewport.GotoBottom()
+				return m, nil
+			}
+
+			// Initiate joke fetching
+			m.processing = true
+			return m, tea.Batch(fetchJokeCmd(input), m.spinner.Tick)
 		}
 
 	case spinner.TickMsg:
-		if m.processing {
-			var cmd tea.Cmd
-			m.spinner, cmd = m.spinner.Update(msg)
-			return m, cmd
-		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
+	case jokeResponseMsg:
+		m.processing = false
+		m.messages = append(m.messages, "AI: "+wordWrap(msg.joke, 70))
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
 		return m, nil
 
-	case jokeMsg:
-		return m.handleJokeResponse(msg)
-
-	case errMsg:
-		return m.handleJokeResponse(msg)
+	case errorResponseMsg:
+		m.processing = false
+		m.messages = append(m.messages, "Error: "+msg.err.Error())
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
+		return m, nil
 	}
 
 	m.textInput, cmd = m.textInput.Update(msg)
-
-	select {
-	case res := <-m.jokeChan:
-		return m.handleJokeResponse(res)
-	default:
-		return m, cmd
-	}
-}
-
-func (m model) handleJokeResponse(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case jokeMsg:
-		m.processing = false
-		m.textInput.Focus()
-		m.messages = append(m.messages, string(msg))
-		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		return m, m.spinner.Tick
-	case errMsg:
-		m.processing = false
-		m.textInput.Focus()
-		m.messages = append(m.messages, "Error: "+msg.Error())
-		m.viewport.SetContent(strings.Join(m.messages, "\n"))
-		return m, m.spinner.Tick
-	}
-	return m, nil
+	return m, cmd
 }
 
 func wordWrap(text string, lineWidth int) string {
 	var result string
 	words := strings.Fields(text)
-	line := ""
 
-	for _, word := range words {
+	if len(words) == 0 {
+		return ""
+	}
+
+	line := words[0]
+
+	for _, word := range words[1:] {
 		if len(line)+len(word)+1 > lineWidth {
 			result += line + "\n"
 			line = word
@@ -314,26 +290,6 @@ func wordWrap(text string, lineWidth int) string {
 	}
 	result += line
 	return result
-}
-
-func (m model) displayJoke(joke JokeResponse) {
-	var jokeText string
-
-	if joke.Type == "single" {
-		jokeText = joke.Joke
-	} else if joke.Type == "twopart" {
-		jokeText = fmt.Sprintf("%s\n\n%s", joke.Setup, joke.Delivery)
-	}
-
-	// Properly format the joke with word wrapping
-	wrappedJoke := wordWrap(jokeText, 70)
-
-	m.messages = append(m.messages, "AI: "+wrappedJoke)
-
-	// Update viewport content with proper formatting
-	content := strings.Join(m.messages, "\n\n") // Add extra newline between messages
-	m.viewport.SetContent(content)
-	m.viewport.GotoBottom()
 }
 
 func (m model) View() string {
@@ -362,7 +318,7 @@ func (m model) View() string {
 
 func main() {
 	p := tea.NewProgram(initialModel())
-	if err := p.Start(); err != nil {
+	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 	}
 }
