@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	
-	"github.com/yourusername/ai-agent/jokeclient"
-	"github.com/yourusername/ai-agent/utils"
+	"github.com/AriT93/ai-agent/jokeclient"
+	"github.com/AriT93/ai-agent/utils"
 )
 
 type model struct {

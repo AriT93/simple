@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yourusername/ai-agent/model"
+	"github.com/AriT93/ai-agent/model"
 )
 
 // Client represents a joke API client
