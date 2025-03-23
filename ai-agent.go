@@ -90,23 +90,18 @@ type JokeResponse struct {
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
 func fetchJoke(input string) (string, error) {
 	// Extract keywords and flags
-	keywords := ""
 	flags := make(map[string]string)
 	parts := strings.Split(input, " ")
 
-
 	// Extract keywords (the words before any flags)
-	keywordParts := []string{}
+	var keywordParts []string
 	for _, part := range parts {
 		if strings.Contains(part, "=") {
-			break // Stop at the first flag
+			break
 		}
 		keywordParts = append(keywordParts, part)
 	}
-	keywords = strings.Join(keywordParts, " ")
-
-	// Extract keywords (the entire input before any flags)
-	keywords = input
+	keywords := strings.Join(keywordParts, " ")
 
 	// Extract flags
 	for _, part := range parts {
@@ -196,17 +191,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				if input == "help" {
 					m.messages = append(m.messages, helpMessage())
-					m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
-					m.viewport.GotoBottom()
 					m.processing = false
 					m.textInput.Focus()
-					return m, nil
 				} else if input == "quit" {
 					return m, tea.Quit
 				} else {
-
 					m.messages = append(m.messages, "AI: processing your request...")
-
 					cmd = func() tea.Msg {
 						joke, err := fetchJoke(input)
 						if err != nil {
@@ -225,6 +215,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.processing = false
 		m.textInput.Focus()
 		return m, nil
+
+	case errMsg:
+		m.messages = append(m.messages, "Error fetching joke: "+msg.Error())
+		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
+		m.viewport.GotoBottom()
+		m.processing = false
+		m.textInput.Focus()
+		return m, msg
+
+	case error:
+		m.err = msg
+		return m, nil
+
+	default:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
 
 	case errMsg:
 		m.messages = append(m.messages, "Error fetching joke: "+msg.Error())
@@ -252,6 +260,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Handle viewport updates (for scrolling)
 	m.viewport, _ = m.viewport.Update(msg)
+
+	if msg != nil {
+		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
+		m.viewport.GotoBottom()
+	}
 
 	return m, cmd
 }
