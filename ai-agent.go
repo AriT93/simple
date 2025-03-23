@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,6 +19,8 @@ type model struct {
 	viewport  viewport.Model
 	messages  []string
 	err       error
+	spinner   spinner.Model
+	processing bool
 }
 
 func initialModel() model {
@@ -28,15 +32,21 @@ func initialModel() model {
 	vp := viewport.New(80, 20)
 	vp.SetContent("Welcome to AI Agent! Type a message and press Enter to chat.")
 
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	return model{
 		textInput: ti,
 		viewport:  vp,
 		messages:  []string{"Welcome to AI Agent! Type a message and press Enter to chat."},
+		spinner:   s,
+		processing: false,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, m.spinner.Tick)
 }
 
 
@@ -167,35 +177,52 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 		case tea.KeyEnter:
-			if m.textInput.Value() != "" {
+			if m.textInput.Value() != "" && !m.processing {
+				m.processing = true
+				m.textInput.Blur()
 				userMsg := "You: " + m.textInput.Value()
 				m.messages = append(m.messages, userMsg)
 
-				if m.textInput.Value() == "help" {
-					m.messages = append(m.messages, simulateAIResponse(m.textInput.Value()))
-				} else {
-					// Fetch joke from the API
-					joke, err := fetchJoke(m.textInput.Value())
-					if err != nil {
-						m.messages = append(m.messages, "Error fetching joke: "+err.Error())
-					} else {
-						m.messages = append(m.messages, "AI: "+joke)
-					}
-				}
-
-				// Update viewport content
-				m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
-				m.viewport.GotoBottom()
-
-				// Clear input
+				input := m.textInput.Value()
 				m.textInput.Reset()
 
-				return m, nil
+				cmd = func() tea.Msg {
+					joke, err := fetchJoke(input)
+					if err != nil {
+						return errMsg(err)
+					}
+					return jokeMsg(joke)
+				}
+				return m, cmd
 			}
 		}
+	case jokeMsg:
+		m.messages = append(m.messages, "AI: "+string(msg))
+		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
+		m.viewport.GotoBottom()
+		m.processing = false
+		m.textInput.Focus()
+		return m, nil
+
+	case errMsg:
+		m.messages = append(m.messages, "Error fetching joke: "+string(msg))
+		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
+		m.viewport.GotoBottom()
+		m.processing = false
+		m.textInput.Focus()
+		return m, nil
+
+	case tea.Cmd:
+		return m, msg
+
 	case error:
 		m.err = msg
 		return m, nil
+
+	default:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 
 	// Handle text input updates
@@ -207,9 +234,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// Custom message types for handling joke and error responses
+type jokeMsg string
+type errMsg string
+
 func (m model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v", m.err)
+	}
+
+	var status string
+	if m.processing {
+		status = m.spinner.View() + " Getting response..."
+	} else {
+		status = ""
 	}
 
 	return lipgloss.JoinVertical(
@@ -217,7 +255,7 @@ func (m model) View() string {
 		"AI Agent Chat",
 		"------------",
 		m.viewport.View(),
-		"",
+		status,
 		m.textInput.View(),
 		"Press Ctrl+C to quit.",
 	)
