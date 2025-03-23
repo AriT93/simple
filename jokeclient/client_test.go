@@ -211,6 +211,9 @@ var _ = Describe("Joke Client", func() {
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("API request failed with status code: 500"))
+				
+				// Reset the base URL for subsequent tests
+				client.BaseURL = server.URL
 			})
 
 			It("should handle invalid JSON", func() {
@@ -220,6 +223,9 @@ var _ = Describe("Joke Client", func() {
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("failed to unmarshal JSON"))
+				
+				// Reset the base URL for subsequent tests
+				client.BaseURL = server.URL
 			})
 
 			It("should handle unknown joke types", func() {
@@ -229,6 +235,9 @@ var _ = Describe("Joke Client", func() {
 				
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("unknown joke type"))
+				
+				// Reset the base URL for subsequent tests
+				client.BaseURL = server.URL
 			})
 		})
 	})
