@@ -93,8 +93,6 @@ type JokeResponse struct {
 	ID   int    `json:"id"`
 	Safe bool   `json:"safe"`
 	Lang string `json:"lang"`
-}
-
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
 func fetchJoke(input string) (string, error) {
 	// Extract keywords and flags
@@ -142,6 +140,11 @@ func fetchJoke(input string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	// Check the response status code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
+	}
+
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -165,7 +168,7 @@ func fetchJoke(input string) (string, error) {
 		return "", fmt.Errorf("unknown joke type: %s", joke.Type)
 	}
 
-	return formattedJoke, nil
+	return fmt.Sprintf("Status Code: %d\n%s", resp.StatusCode, formattedJoke), nil
 }
 
 // simulateAIResponse is a placeholder for the help command
@@ -189,16 +192,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				input := m.textInput.Value()
 				m.textInput.Reset()
 
+				m.processing = true
+				m.textInput.Blur()
+
+				// Append the user's message to the messages
+				m.messages = append(m.messages, "You: "+input)
+
+				// Simulate AI response
 				// Handle help command
 				if input == "help" {
 					m.messages = append(m.messages, "You: "+input)
 					m.messages = append(m.messages, string(simulateAIResponse(input).(jokeMsg)))
 					m.viewport.SetContent(strings.Join(m.messages, "\n"))
+					m.processing = false
+					m.textInput.Focus()
 					return m, nil
 				}
-
-				m.processing = true
-				m.textInput.Blur()
 
 				// Append the user's message to the messages
 				m.messages = append(m.messages, "You: "+input)
