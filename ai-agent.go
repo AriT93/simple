@@ -94,19 +94,22 @@ func fetchJoke(input string) (string, error) {
 	flags := make(map[string]string)
 	parts := strings.Split(input, " ")
 
+	// First, extract the keywords (the words before any flags)
+	keywordParts := []string{}
 	for _, part := range parts {
 		if strings.Contains(part, "=") {
-			// Parse flag
+			break // Stop at the first flag
+		}
+		keywordParts = append(keywordParts, part)
+	}
+	keywords = strings.Join(keywordParts, " ")
+
+	// Then, extract the flags
+	for _, part := range parts {
+		if strings.Contains(part, "=") {
 			flagParts := strings.SplitN(part, "=", 2)
 			if len(flagParts) == 2 {
 				flags[flagParts[0]] = flagParts[1]
-			}
-		} else {
-			// Treat as keyword
-			if keywords == "" {
-				keywords = part
-			} else {
-				keywords += " " + part
 			}
 		}
 	}
@@ -119,6 +122,7 @@ func fetchJoke(input string) (string, error) {
 		params = append(params, "contains="+keywords)
 	}
 
+	// Add flags to the parameters
 	for key, value := range flags {
 		params = append(params, key+"="+value)
 	}
