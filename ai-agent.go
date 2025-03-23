@@ -203,17 +203,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					m.messages = append(m.messages, "AI: processing your request...")
 
-					go func() {
+					cmd = func() tea.Msg {
 						joke, err := fetchJoke(input)
 						if err != nil {
-							m.messages = append(m.messages, "Error fetching joke: "+err.Error())
-						} else {
-							m.messages = append(m.messages, "AI: "+joke)
+							return errMsg(err)
 						}
-						m.processing = false
-						m.textInput.Focus()
-					}()
-					return m, nil
+						return jokeMsg(joke)
+					}
+					return m, cmd
 				}
 			}
 		}
