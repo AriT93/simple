@@ -206,7 +206,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc", "q", "quit":
+		case "ctrl+c", "esc":
+			return m, tea.Quit
+		case "quit":
 			return m, tea.Quit
 		case "enter":
 			if m.textInput.Value() != "" && !m.processing {
