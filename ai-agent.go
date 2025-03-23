@@ -101,7 +101,95 @@ type JokeResponse struct {
 
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
 func fetchJoke(input string) (string, error) {
-	return "", nil
+	// Extract keywords and flags
+	keywords := ""
+	flags := make(map[string]string)
+	parts := strings.Split(input, " ")
+
+	for _, part := range parts {
+		if strings.Contains(part, "=") {
+			// Parse flag
+			flagParts := strings.SplitN(part, "=", 2)
+			if len(flagParts) == 2 {
+				flags[flagParts[0]] = flagParts[1]
+			}
+		} else {
+			// Treat as keyword
+			if keywords == "" {
+				keywords = part
+			} else {
+				keywords += " " + part
+			}
+		}
+	}
+
+	// Construct URL
+	url := "https://v2.jokeapi.dev/joke/Any"
+	params := []string{}
+
+	if keywords != "" {
+		params = append(params, "contains="+keywords)
+	}
+
+	for key, value := range flags {
+		params = append(params, key+"="+value)
+	}
+
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
+	}
+
+	// Create a context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Create a new request with the context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Make the HTTP request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("API request timed out after 2 seconds")
+		}
+		return "", fmt.Errorf("API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check the response status code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
+	}
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Unmarshal the JSON response
+	var joke JokeResponse
+	err = json.Unmarshal(body, &joke)
+	if err != nil {
+		return "", fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	// Format the joke based on its type
+	var formattedJoke string
+	if joke.Type == "single" {
+		formattedJoke = "Joke: " + joke.Joke
+	} else if joke.Type == "twopart" {
+		formattedJoke = "Setup: " + joke.Setup + "\nDelivery: " + joke.Delivery
+	} else {
+		return "", fmt.Errorf("unknown joke type: %s", joke.Type)
+	}
+
+	return fmt.Sprintf("Status Code: %d\n%s", resp.StatusCode, formattedJoke), nil
 }
 
 // simulateAIResponse is a placeholder for the help command
@@ -190,11 +278,64 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.SetContent(strings.Join(m.messages, "\n"))
 
 				cmd = func() tea.Msg {
-					joke, err := fetchJoke(input)
+					// Create a context with a timeout
+					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cancel()
+
+					req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 					if err != nil {
-						return errMsg{err}
+						m.jokeChan <- errMsg{fmt.Errorf("failed to create request: %w", err)}
+						return m.spinner.Tick
 					}
-					return jokeMsg(joke)
+
+					// Make the HTTP request
+					client := &http.Client{}
+					resp, err := client.Do(req)
+
+					if err != nil {
+						if ctx.Err() == context.DeadlineExceeded {
+							m.jokeChan <- errMsg{fmt.Errorf("API request timed out after 2 seconds")}
+							return m.spinner.Tick
+						}
+						m.jokeChan <- errMsg{fmt.Errorf("API request failed: %w", err)}
+						return m.spinner.Tick
+					}
+					defer resp.Body.Close()
+
+					// Check the response status code
+					if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+						m.jokeChan <- errMsg{fmt.Errorf("API request failed with status code: %d", resp.StatusCode)}
+						return m.spinner.Tick
+					}
+
+					// Read the response body
+					body, err := io.ReadAll(resp.Body)
+					if err != nil {
+						m.jokeChan <- errMsg{fmt.Errorf("failed to read response body: %w", err)}
+						return m.spinner.Tick
+					}
+
+					// Unmarshal the JSON response
+					var joke JokeResponse
+					err = json.Unmarshal(body, &joke)
+					if err != nil {
+						m.jokeChan <- errMsg{fmt.Errorf("failed to unmarshal JSON: %w", err)}
+						return m.spinner.Tick
+					}
+
+					// Format the joke based on its type
+					var formattedJoke string
+					if joke.Type == "single" {
+						formattedJoke = "Joke: " + joke.Joke
+					} else if joke.Type == "twopart" {
+						formattedJoke = "Setup: " + joke.Setup + "\nDelivery: " + joke.Delivery
+					} else {
+						m.jokeChan <- errMsg{fmt.Errorf("unknown joke type: %s", joke.Type)}
+						return m.spinner.Tick
+					}
+
+					m.jokeChan <- jokeMsg(fmt.Sprintf("Status Code: %d\n%s", resp.StatusCode, formattedJoke))
+					return m.spinner.Tick
 				}
 				return m, cmd
 			}
@@ -209,6 +350,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.Cmd:
 		// Ignore other commands
 		return m, nil
+	}
+
+	// Construct URL
+	url := "https://v2.jokeapi.dev/joke/Any"
+	params := []string{}
+
+	if keywords != "" {
+		params = append(params, "contains="+keywords)
+	}
+
+	for key, value := range flags {
+		params = append(params, key+"="+value)
+	}
+
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
+	}
+
+	// Extract keywords and flags
+	keywords := ""
+	flags := make(map[string]string)
+	parts := strings.Split(input, " ")
+
+	for _, part := range parts {
+		if strings.Contains(part, "=") {
+			// Parse flag
+			flagParts := strings.SplitN(part, "=", 2)
+			if len(flagParts) == 2 {
+				flags[flagParts[0]] = flagParts[1]
+			}
+		} else {
+			// Treat as keyword
+			if keywords == "" {
+				keywords = part
+			} else {
+				keywords += " " + part
+			}
+		}
 	}
 
 	// Construct URL
