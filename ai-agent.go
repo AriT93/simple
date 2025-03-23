@@ -137,10 +137,25 @@ func fetchJoke(input string) (string, error) {
 		url += "?" + strings.Join(params, "&")
 	}
 
-	// Make the HTTP request
-	resp, err := http.Get(url)
+	// Create a context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Create a new request with the context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Make the HTTP request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("API request timed out after 2 seconds")
+		}
+		return "", fmt.Errorf("API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -152,14 +167,14 @@ func fetchJoke(input string) (string, error) {
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Unmarshal the JSON response
 	var joke JokeResponse
 	err = json.Unmarshal(body, &joke)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
 	// Format the joke based on its type
