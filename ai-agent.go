@@ -197,8 +197,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Handle help command
 				if input == "help" {
 					m.messages = append(m.messages, "You: "+input)
-					m.messages = append(m.messages, string(simulateAIResponse(input).(jokeMsg)))
+					helpText := simulateAIResponse(input).(jokeMsg)
+					m.messages = append(m.messages, string(helpText))
 					m.viewport.SetContent(strings.Join(m.messages, "\n"))
+					m.processing = false
+					m.textInput.Focus()
 					return m, nil
 				}
 
@@ -229,11 +232,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.Focus()
 		m.messages = append(m.messages, string(msg))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		return m, nil
 	case errMsg:
 		m.processing = false
 		m.textInput.Focus()
 		m.messages = append(m.messages, "Error: "+msg.Error())
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		return m, nil
 	case spinner.TickMsg:
 		if m.processing {
 			var cmd tea.Cmd
