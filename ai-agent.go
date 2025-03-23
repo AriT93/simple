@@ -39,10 +39,6 @@ func (m model) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-// simulateAIResponse is a placeholder for actual AI integration
-func simulateAIResponse(msg string) string {
-	return "AI: I received your message: \"" + msg + "\""
-}
 
 // helpMessage provides instructions on how to use the Joke API
 func helpMessage() string {
