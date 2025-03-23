@@ -78,43 +78,42 @@ type JokeResponse struct {
 }
 
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
-func fetchJoke(query string) (string, error) {
-	// Parse flags from the query
-	category := ""
-	blacklistFlags := ""
-	jokeType := ""
+func fetchJoke(input string) (string, error) {
+	// Separate the query from the flags
+	parts := strings.Split(input, " ")
+	query := ""
+	flags := make(map[string]string)
 
-	parts := strings.Split(query, " ")
 	for _, part := range parts {
 		if strings.Contains(part, "=") {
 			flagParts := strings.SplitN(part, "=", 2)
 			if len(flagParts) == 2 {
 				flag := flagParts[0]
 				value := flagParts[1]
-				switch flag {
-				case "category":
-					category = value
-				case "blacklistFlags":
-					blacklistFlags = value
-				case "type":
-					jokeType = value
-				}
+				flags[flag] = value
+			}
+		} else {
+			if query == "" {
+				query = part
+			} else {
+				query += " " + part
 			}
 		}
 	}
 
 	// Construct the API URL with the query and flags
-	url := "https://v2.jokeapi.dev/joke/Any?contains=" + strings.ReplaceAll(query, "category="+category, "")
-	url = strings.ReplaceAll(url, "blacklistFlags="+blacklistFlags, "")
-	url = strings.ReplaceAll(url, "type="+jokeType, "")
+	url := "https://v2.jokeapi.dev/joke/Any"
+	if query != "" {
+		url += "?contains=" + query
+	}
 
-	if category != "" {
+	if category, ok := flags["category"]; ok {
 		url += "&category=" + category
 	}
-	if blacklistFlags != "" {
+	if blacklistFlags, ok := flags["blacklistFlags"]; ok {
 		url += "&blacklistFlags=" + blacklistFlags
 	}
-	if jokeType != "" {
+	if jokeType, ok := flags["type"]; ok {
 		url += "&type=" + jokeType
 	}
 
