@@ -44,6 +44,22 @@ func simulateAIResponse(msg string) string {
 	return "AI: I received your message: \"" + msg + "\""
 }
 
+// helpMessage provides instructions on how to use the Joke API
+func helpMessage() string {
+	return `
+Joke API Usage:
+To get a joke, type a message containing keywords related to the joke you want to hear.
+For example: "tell me a joke about cats"
+
+Available flags:
+- category=[Category]: Specify the category of the joke (e.g., "Programming", "Christmas").
+- blacklistFlags=[flag1,flag2,...]: Blacklist certain flags (e.g., "nsfw", "racist").
+- type=[single|twopart]: Specify the joke type.
+
+Example: "tell me a programming joke category=Programming blacklistFlags=nsfw,racist type=single"
+`
+}
+
 // JokeResponse struct to hold the API response
 type JokeResponse struct {
 	Error     bool   `json:"error"`
@@ -65,10 +81,46 @@ type JokeResponse struct {
 	Lang          string `json:"lang"`
 }
 
-// fetchJoke fetches a joke from the JokeAPI
+// fetchJoke fetches a joke from the JokeAPI and accepts flags
 func fetchJoke(query string) (string, error) {
-	// Construct the API URL with the query
-	url := fmt.Sprintf("https://v2.jokeapi.dev/joke/Any?contains=%s", query)
+	// Parse flags from the query
+	category := ""
+	blacklistFlags := ""
+	jokeType := ""
+
+	parts := strings.Split(query, " ")
+	for _, part := range parts {
+		if strings.Contains(part, "=") {
+			flagParts := strings.SplitN(part, "=", 2)
+			if len(flagParts) == 2 {
+				flag := flagParts[0]
+				value := flagParts[1]
+				switch flag {
+				case "category":
+					category = value
+				case "blacklistFlags":
+					blacklistFlags = value
+				case "type":
+					jokeType = value
+				}
+			}
+		}
+	}
+
+	// Construct the API URL with the query and flags
+	url := "https://v2.jokeapi.dev/joke/Any?contains=" + strings.ReplaceAll(query, "category="+category, "")
+	url = strings.ReplaceAll(url, "blacklistFlags="+blacklistFlags, "")
+	url = strings.ReplaceAll(url, "type="+jokeType, "")
+
+	if category != "" {
+		url += "&category=" + category
+	}
+	if blacklistFlags != "" {
+		url += "&blacklistFlags=" + blacklistFlags
+	}
+	if jokeType != "" {
+		url += "&type=" + jokeType
+	}
 
 	// Make the HTTP request
 	resp, err := http.Get(url)
@@ -103,6 +155,14 @@ func fetchJoke(query string) (string, error) {
 	return formattedJoke, nil
 }
 
+// simulateAIResponse is a placeholder for the help command
+func simulateAIResponse(msg string) string {
+	if msg == "help" {
+		return helpMessage()
+	}
+	return "AI: I received your message: \"" + msg + "\""
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
@@ -116,12 +176,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				userMsg := "You: " + m.textInput.Value()
 				m.messages = append(m.messages, userMsg)
 
-				// Fetch joke from the API
-				joke, err := fetchJoke(m.textInput.Value())
-				if err != nil {
-					m.messages = append(m.messages, "Error fetching joke: "+err.Error())
+				if m.textInput.Value() == "help" {
+					m.messages = append(m.messages, simulateAIResponse(m.textInput.Value()))
 				} else {
-					m.messages = append(m.messages, "AI: "+joke)
+					// Fetch joke from the API
+					joke, err := fetchJoke(m.textInput.Value())
+					if err != nil {
+						m.messages = append(m.messages, "Error fetching joke: "+err.Error())
+					} else {
+						m.messages = append(m.messages, "AI: "+joke)
+					}
 				}
 
 				// Update viewport content
