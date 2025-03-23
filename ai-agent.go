@@ -1,19 +1,17 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	
+	"github.com/yourusername/ai-agent/jokeclient"
+	"github.com/yourusername/ai-agent/utils"
 )
 
 type model struct {
@@ -23,6 +21,7 @@ type model struct {
 	err        error
 	spinner    spinner.Model
 	processing bool
+	jokeClient *jokeclient.Client
 }
 
 func initialModel() model {
@@ -45,6 +44,7 @@ func initialModel() model {
 		textInput:  ti,
 		spinner:    s,
 		processing: false,
+		jokeClient: jokeclient.NewClient(),
 	}
 }
 
@@ -82,131 +82,14 @@ Examples:
 "Tell me a joke but nothing nsfw or political"
 `
 
-// JokeResponse struct to hold the API response
-type JokeResponse struct {
-	Error    bool   `json:"error"`
-	Category string `json:"category"`
-	Type     string `json:"type"`
-	Setup    string `json:"setup"`
-	Delivery string `json:"delivery"`
-	Joke     string `json:"joke"`
-	Flags    struct {
-		Nsfw      bool `json:"nsfw"`
-		Religious bool `json:"religious"`
-		Political bool `json:"political"`
-		Racist    bool `json:"racist"`
-		Sexist    bool `json:"sexist"`
-		Explicit  bool `json:"explicit"`
-	} `json:"flags"`
-	ID   int    `json:"id"`
-	Safe bool   `json:"safe"`
-	Lang string `json:"lang"`
-}
-
 // Command to fetch a joke asynchronously
-func fetchJokeCmd(input string) tea.Cmd {
+func fetchJokeCmd(client *jokeclient.Client, input string) tea.Cmd {
 	return func() tea.Msg {
-		// Parse input to extract category and joke type
-		input = strings.ToLower(input)
-
-		// Initialize parameters
-		jokeCategory := "Any" // Default category
-		jokeType := ""        // No specific type by default
-		blacklistFlags := []string{}
-
-		// Check for joke type
-		if strings.Contains(input, "twopart") {
-			jokeType = "twopart"
-		} else if strings.Contains(input, "single") {
-			jokeType = "single"
-		}
-
-		// Check for categories
-		categories := []string{"programming", "misc", "dark", "pun", "spooky", "christmas"}
-		for _, category := range categories {
-			if strings.Contains(input, category) {
-				jokeCategory = strings.Title(category) // Capitalize first letter for API
-				break
-			}
-		}
-
-		// Check for blacklist flags
-		blacklistOptions := []string{"nsfw", "religious", "political", "racist", "sexist", "explicit"}
-		for _, flag := range blacklistOptions {
-			if strings.Contains(input, "no "+flag) || strings.Contains(input, "not "+flag) {
-				blacklistFlags = append(blacklistFlags, flag)
-			}
-		}
-
-		// Construct URL with proper path parameters
-		url := fmt.Sprintf("https://v2.jokeapi.dev/joke/%s", jokeCategory)
-
-		// Add query parameters
-		params := []string{}
-
-		if jokeType != "" {
-			params = append(params, "type="+jokeType)
-		}
-
-		if len(blacklistFlags) > 0 {
-			params = append(params, "blacklistFlags="+strings.Join(blacklistFlags, ","))
-		}
-
-		if len(params) > 0 {
-			url += "?" + strings.Join(params, "&")
-		}
-
-		// Create a context with a timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		// Create a new request with the context
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		joke, err := client.FetchJoke(input)
 		if err != nil {
-			return errorResponseMsg{err: fmt.Errorf("failed to create request: %w", err)}
+			return errorResponseMsg{err: err}
 		}
-
-		// Make the HTTP request
-		client := &http.Client{}
-		resp, err := client.Do(req)
-
-		if err != nil {
-			if ctx.Err() == context.DeadlineExceeded {
-				return errorResponseMsg{err: fmt.Errorf("API request timed out after 5 seconds")}
-			}
-			return errorResponseMsg{err: fmt.Errorf("API request failed: %w", err)}
-		}
-		defer resp.Body.Close()
-
-		// Check the response status code
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return errorResponseMsg{err: fmt.Errorf("API request failed with status code: %d", resp.StatusCode)}
-		}
-
-		// Read the response body
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return errorResponseMsg{err: fmt.Errorf("failed to read response body: %w", err)}
-		}
-
-		// Unmarshal the JSON response
-		var joke JokeResponse
-		err = json.Unmarshal(body, &joke)
-		if err != nil {
-			return errorResponseMsg{err: fmt.Errorf("failed to unmarshal JSON: %w", err)}
-		}
-
-		// Format the joke based on its type
-		var formattedJoke string
-		if joke.Type == "single" {
-			formattedJoke = joke.Joke
-		} else if joke.Type == "twopart" {
-			formattedJoke = fmt.Sprintf("%s\n\n%s", joke.Setup, joke.Delivery)
-		} else {
-			return errorResponseMsg{err: fmt.Errorf("unknown joke type: %s", joke.Type)}
-		}
-
-		return jokeResponseMsg{joke: formattedJoke}
+		return jokeResponseMsg{joke: joke}
 	}
 }
 
@@ -248,7 +131,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Initiate joke fetching
 			m.processing = true
-			return m, tea.Batch(fetchJokeCmd(input), m.spinner.Tick)
+			return m, tea.Batch(fetchJokeCmd(m.jokeClient, input), m.spinner.Tick)
 		}
 
 	case spinner.TickMsg:
@@ -258,7 +141,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case jokeResponseMsg:
 		m.processing = false
-		m.messages = append(m.messages, "AI: "+wordWrap(msg.joke, 70))
+		m.messages = append(m.messages, "AI: "+utils.WordWrap(msg.joke, 70))
 		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 		m.viewport.GotoBottom()
 		return m, nil
@@ -275,27 +158,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func wordWrap(text string, lineWidth int) string {
-	var result string
-	words := strings.Fields(text)
-
-	if len(words) == 0 {
-		return ""
-	}
-
-	line := words[0]
-
-	for _, word := range words[1:] {
-		if len(line)+len(word)+1 > lineWidth {
-			result += line + "\n"
-			line = word
-		} else {
-			line += " " + word
-		}
-	}
-	result += line
-	return result
-}
 
 func (m model) View() string {
 	if m.err != nil {
