@@ -1,6 +1,7 @@
 package jokeclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,17 +13,32 @@ import (
 	"github.com/AriT93/ai-agent/model"
 )
 
+// ANSI color codes
+const (
+	blueColor  = "\033[34m"
+	resetColor = "\033[0m"
+	boldText   = "\033[1m"
+)
+
 // Client represents a joke API client
 type Client struct {
 	BaseURL string
 	Timeout time.Duration
+	Debug   bool // Add debug flag
 }
 
 // NewClient creates a new joke API client
-func NewClient() *Client {
+func NewClient(debug ...bool) *Client {
+	// Default debug to false, but allow it to be enabled via optional parameter
+	isDebug := false
+	if len(debug) > 0 {
+		isDebug = debug[0]
+	}
+
 	return &Client{
 		BaseURL: "https://v2.jokeapi.dev/joke",
 		Timeout: 5 * time.Second,
+		Debug:   isDebug,
 	}
 }
 
@@ -78,6 +94,11 @@ func (c *Client) FetchJoke(input string) (string, error) {
 		url += "?" + strings.Join(params, "&")
 	}
 
+	// Debug output for request URL
+	if c.Debug {
+		fmt.Printf("%s%s[DEBUG REQUEST]%s %s\n", blueColor, boldText, resetColor, url)
+	}
+
 	// Create a context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
@@ -109,6 +130,19 @@ func (c *Client) FetchJoke(input string) (string, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Debug output for response JSON
+	if c.Debug {
+		var prettyJSON bytes.Buffer
+		err = json.Indent(&prettyJSON, body, "", "  ")
+		if err != nil {
+			fmt.Printf("%s%s[DEBUG RESPONSE]%s %s\n", blueColor, boldText, resetColor, string(body))
+		} else {
+			fmt.Printf("%s%s[DEBUG RESPONSE]%s\n%s%s%s",
+				blueColor, boldText, resetColor,
+				blueColor, prettyJSON.String(), resetColor)
+		}
 	}
 
 	// Unmarshal the JSON response

@@ -22,16 +22,17 @@ import (
 
 // Add LangChain components to the model
 type model struct {
-	textInput  textinput.Model
-	viewport   viewport.Model
-	messages   []string
-	err        error
-	spinner    spinner.Model
-	processing bool
-	jokeClient *jokeclient.Client
-	llm        llms.Model       // LangChain
-	parser     *chains.LLMChain // Chain for parsing input
-	enhancer   *chains.LLMChain // Chain for enhancing output
+	textInput   textinput.Model
+	viewport    viewport.Model
+	messages    []string
+	err         error
+	spinner     spinner.Model
+	processing  bool
+	jokeClient  *jokeclient.Client
+	llm         llms.Model       // LangChain
+	parser      *chains.LLMChain // Chain for parsing input
+	enhancer    *chains.LLMChain // Chain for enhancing output
+	showingHelp bool
 }
 
 func initialModel() model {
@@ -48,8 +49,9 @@ func initialModel() model {
 	s.Spinner = spinner.Monkey
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000"))
 
-	// Initialize joke client
-	jokeClient := jokeclient.NewClient()
+	// Enable debug mode based on environment variable or flag
+	debug := os.Getenv("DEBUG") == "true"
+	jokeClient := jokeclient.NewClient(debug)
 
 	// Initialize LangChain components (with error handling)
 	var llm llms.Model
@@ -151,6 +153,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// If showing help, any key returns to normal view
+		if m.showingHelp {
+			if msg.Type == tea.KeyEnter || msg.Type == tea.KeyEsc {
+				m.showingHelp = false
+				return m, nil
+			}
+			return m, nil
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
@@ -166,6 +177,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 
+			// Handle help command
+			if input == "help" {
+				m.textInput.Reset()
+				m.showingHelp = true
+				return m, nil
+			}
+
 			// Reset input
 			m.textInput.Reset()
 
@@ -173,14 +191,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, "You: "+input)
 			m.viewport.SetContent(strings.Join(m.messages, "\n"))
 			m.viewport.GotoBottom()
-
-			// Handle help command
-			if input == "help" {
-				m.messages = append(m.messages, helpMessage)
-				m.viewport.SetContent(strings.Join(m.messages, "\n"))
-				m.viewport.GotoBottom()
-				return m, nil
-			}
 
 			// Initiate joke fetching
 			m.processing = true
@@ -194,15 +204,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case jokeResponseMsg:
 		m.processing = false
-		m.messages = append(m.messages, "AI: "+utils.WordWrap(msg.joke, 70))
-		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+
+		// Wrap the joke at 72 characters for better display
+		wrappedJoke := utils.WordWrap(msg.joke, 72)
+		m.messages = append(m.messages, "AI: "+wrappedJoke)
+
+		// Add extra newline for better separation between messages
+		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
 		m.viewport.GotoBottom()
 		return m, nil
 
 	case errorResponseMsg:
 		m.processing = false
-		m.messages = append(m.messages, "Error: "+msg.err.Error())
-		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+
+		// Wrap error message
+		wrappedError := utils.WordWrap(msg.err.Error(), 72)
+		m.messages = append(m.messages, "Error: "+wrappedError)
+
+		// Add extra newline for better separation
+		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
 		m.viewport.GotoBottom()
 		return m, nil
 	}
@@ -214,6 +234,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v", m.err)
+	}
+
+	if m.showingHelp {
+		// Format the help message with proper spacing and structure
+		helpStyle := lipgloss.NewStyle().Width(72)
+
+		// Split the help message into sections and format each separately
+		sections := strings.Split(helpMessage, "\n\n")
+		formattedSections := make([]string, len(sections))
+
+		for i, section := range sections {
+			formattedSections[i] = helpStyle.Render(section)
+		}
+
+		// Join the sections with proper spacing
+		formattedHelp := strings.Join(formattedSections, "\n\n")
+
+		return lipgloss.JoinVertical(
+			lipgloss.Left,
+			lipgloss.NewStyle().Bold(true).Render("AI Assistant Help"),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Render("---------------"),
+			formattedHelp,
+			"",
+			lipgloss.NewStyle().Italic(true).Render("Press ESC or Enter to return to chat"),
+		)
 	}
 
 	var status string
@@ -233,8 +278,8 @@ func (m model) View() string {
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		"AI Agent Chat",
-		"------------",
+		lipgloss.NewStyle().Bold(true).Render("AI Agent Chat"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Render("------------"),
 		m.viewport.View(),
 		status,
 		m.textInput.View(),
