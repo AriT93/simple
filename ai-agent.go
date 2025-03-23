@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	// "github.com/yourusername/yourproject/utils" // Removed or replace with the correct package
 )
 
 type model struct {
@@ -27,29 +28,25 @@ type model struct {
 }
 
 func initialModel() model {
+	vp := viewport.New(80, 20)
+	vp.SetContent("Welcome to AI Assistant!\nType 'help' for instructions or start typing your request.\n")
+
 	ti := textinput.New()
-	ti.Placeholder = "Type your message here..."
-	ti.Focus()
+	ti.Placeholder = "Ask for a joke..."
+	ti.Focus() // Ensure text input is focused from the start
 	ti.Width = 80
 
-	vp := viewport.New(80, 20)
-	vp.SetContent("Welcome to AI Agent! Type a message and press Enter to chat.")
-
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-
 	return model{
-		textInput:  ti,
+		messages:   []string{"Welcome to AI Assistant!", "Type 'help' for instructions or start typing your request."},
 		viewport:   vp,
-		messages:   []string{"Welcome to AI Agent! Type a message and press Enter to chat."},
-		spinner:    s,
+		textInput:  ti,
+		spinner:    spinner.New(),
 		processing: false,
-		jokeChan:   make(chan tea.Msg),
 	}
 }
 
 func (m model) Init() tea.Cmd {
+	// Return both commands to ensure input is ready
 	return tea.Batch(textinput.Blink, m.spinner.Tick)
 }
 
@@ -62,31 +59,37 @@ func (e errMsg) Error() string {
 	return e.err.Error()
 }
 
-// helpMessage provides instructions on how to use the Joke API
-func helpMessage() string {
-	return `
-Joke API Usage:
-To get a joke, type a message containing keywords related to the joke you want to hear.
-For example: "tell me a joke about cats"
+const helpMessage = `
+AI Assistant Help:
+-----------------
+This is a natural language interface for fetching jokes.
 
-Available flags:
-- category=[Category]: Specify the category of the joke (e.g., "Programming", "Christmas").
-- blacklistFlags=[flag1,flag2,...]: Blacklist certain flags (e.g., "nsfw", "racist").
-- type=[single|twopart]: Specify the joke type.
+Commands:
+- Type a request like "Tell me a joke about programming"
+- Add parameters like "category:programming" or "type:twopart" 
+- Type "quit" or press ESC to exit
+- Type "help" to show this message
 
-Example: "tell me a programming joke category=Programming blacklistFlags=nsfw,racist type=single"
+Parameters:
+- category: [programming, misc, dark, pun, spooky, christmas]
+- type: [single, twopart]
+- blacklist: [nsfw, religious, political, racist, sexist, explicit]
+
+Examples:
+"Tell me a programming joke"
+"Give me a twopart joke about christmas"
+"Tell me a joke but nothing nsfw or political"
 `
-}
 
 // JokeResponse struct to hold the API response
 type JokeResponse struct {
-	Error     bool   `json:"error"`
-	Category  string `json:"category"`
-	Type      string `json:"type"`
-	Setup     string `json:"setup"`
-	Delivery  string `json:"delivery"`
-	Joke      string `json:"joke"`
-	Flags     struct {
+	Error    bool   `json:"error"`
+	Category string `json:"category"`
+	Type     string `json:"type"`
+	Setup    string `json:"setup"`
+	Delivery string `json:"delivery"`
+	Joke     string `json:"joke"`
+	Flags    struct {
 		Nsfw      bool `json:"nsfw"`
 		Religious bool `json:"religious"`
 		Political bool `json:"political"`
@@ -173,7 +176,7 @@ func fetchJoke(keywords string, flags map[string]string) (string, error) {
 // simulateAIResponse is a placeholder for the help command
 func simulateAIResponse(msg string) tea.Msg {
 	if msg == "help" {
-		return jokeMsg(helpMessage())
+		return jokeMsg(helpMessage)
 	}
 	return jokeMsg("AI: I received your message: \"" + msg + "\"")
 }
@@ -183,10 +186,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc", "quit":
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
-		case "enter":
+
+		case tea.KeyEnter:
 			if m.textInput.Value() != "" && !m.processing {
 				input := m.textInput.Value()
 				m.textInput.Reset()
@@ -293,6 +297,43 @@ func (m model) handleJokeResponse(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.spinner.Tick
 	}
 	return m, nil
+}
+
+func wordWrap(text string, lineWidth int) string {
+	var result string
+	words := strings.Fields(text)
+	line := ""
+
+	for _, word := range words {
+		if len(line)+len(word)+1 > lineWidth {
+			result += line + "\n"
+			line = word
+		} else {
+			line += " " + word
+		}
+	}
+	result += line
+	return result
+}
+
+func (m model) displayJoke(joke JokeResponse) {
+	var jokeText string
+
+	if joke.Type == "single" {
+		jokeText = joke.Joke
+	} else if joke.Type == "twopart" {
+		jokeText = fmt.Sprintf("%s\n\n%s", joke.Setup, joke.Delivery)
+	}
+
+	// Properly format the joke with word wrapping
+	wrappedJoke := wordWrap(jokeText, 70)
+
+	m.messages = append(m.messages, "AI: "+wrappedJoke)
+
+	// Update viewport content with proper formatting
+	content := strings.Join(m.messages, "\n\n") // Add extra newline between messages
+	m.viewport.SetContent(content)
+	m.viewport.GotoBottom()
 }
 
 func (m model) View() string {
