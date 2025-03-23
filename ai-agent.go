@@ -202,7 +202,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmd = func() tea.Msg {
 						joke, err := fetchJoke(input)
 						if err != nil {
-							return errMsg("deee")
+							return errMsg(err)
 						}
 						return jokeMsg(joke)
 					}
@@ -219,7 +219,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case errMsg:
-		m.messages = append(m.messages, "Error fetching joke: "+string(msg))
+		m.messages = append(m.messages, "Error fetching joke: "+msg.Error())
 		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
 		m.viewport.GotoBottom()
 		m.processing = false
@@ -250,7 +250,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // Custom message types for handling joke and error responses
 type jokeMsg string
-type errMsg string
+type errMsg error
 
 func (m model) View() string {
 	if m.err != nil {
