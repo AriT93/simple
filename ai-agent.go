@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -257,11 +257,73 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Capture keywords and flags in the closure
 				cmd := func() tea.Msg {
-					joke, err := fetchJoke(keywords, flags)
-					if err != nil {
-						return errMsg{err}
+					// Construct URL
+					url := "https://v2.jokeapi.dev/joke/Any"
+					params := []string{}
+
+					if keywords != "" {
+						params = append(params, "contains="+keywords)
 					}
-					return jokeMsg(joke)
+
+					for key, value := range flags {
+						params = append(params, key+"="+value)
+					}
+
+					if len(params) > 0 {
+						url += "?" + strings.Join(params, "&")
+					}
+
+					// Create a context with a timeout
+					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cancel()
+
+					req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+					if err != nil {
+						return errMsg{fmt.Errorf("failed to create request: %w", err)}
+					}
+
+					// Make the HTTP request
+					client := &http.Client{}
+					resp, err := client.Do(req)
+
+					if err != nil {
+						if ctx.Err() == context.DeadlineExceeded {
+							return errMsg{fmt.Errorf("API request timed out after 2 seconds")}
+						}
+						return errMsg{fmt.Errorf("API request failed: %w", err)}
+					}
+					defer resp.Body.Close()
+
+					// Check the response status code
+					if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+						return errMsg{fmt.Errorf("API request failed with status code: %d", resp.StatusCode)}
+					}
+
+					// Read the response body
+					body, err := io.ReadAll(resp.Body)
+					if err != nil {
+						return errMsg{fmt.Errorf("failed to read response body: %w", err)}
+					}
+
+					// Unmarshal the JSON response
+					var joke JokeResponse
+					err = json.Unmarshal(body, &joke)
+					if err != nil {
+						return errMsg{fmt.Errorf("failed to unmarshal JSON: %w", err)}
+					}
+
+					// Format the joke based on its type
+					var formattedJoke string
+					if joke.Type == "single" {
+						formattedJoke = "Joke: " + joke.Joke
+					} else if joke.Type == "twopart" {
+						formattedJoke = "Setup: " + joke.Setup + "\nDelivery: " + joke.Delivery
+					} else {
+						return errMsg{fmt.Errorf("unknown joke type: %s", joke.Type)}
+					}
+
+					formattedJoke = fmt.Sprintf("Status Code: %d\n%s", resp.StatusCode, formattedJoke)
+					return jokeMsg(formattedJoke)
 				}
 				return m, cmd
 			}
@@ -428,13 +490,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	select {
 	case res := <-m.jokeChan:
-		return m.handleJokeResponse(res, keywords, flags)
+		return m.handleJokeResponse(res)
 	default:
 		return m, cmd
 	}
 }
 
-func (m model) handleJokeResponse(msg tea.Msg, keywords string, flags map[string]string) (tea.Model, tea.Cmd) {
+func (m model) handleJokeResponse(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case jokeMsg:
 		m.processing = false
