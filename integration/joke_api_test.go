@@ -19,9 +19,8 @@ var _ = Describe("Joke API Integration", func() {
 	})
 
 	// These tests hit the real API and may be flaky
-	// They're marked as pending by default
-	// Use --focus="Live API Tests" to run them
-	PDescribe("Live API Tests", func() {
+	// Use --skip="Live API Tests" to skip them if needed
+	Describe("Live API Tests", func() {
 		It("should fetch a programming joke", func() {
 			joke, err := client.FetchJoke("Tell me a programming joke")
 			
