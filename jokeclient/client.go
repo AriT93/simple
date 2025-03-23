@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -15,16 +16,16 @@ import (
 
 // ANSI color codes
 const (
-	blueColor  = "\033[34m"
 	resetColor = "\033[0m"
 	boldText   = "\033[1m"
 )
 
 // Client represents a joke API client
 type Client struct {
-	BaseURL string
-	Timeout time.Duration
-	Debug   bool // Add debug flag
+	BaseURL   string
+	Timeout   time.Duration
+	Debug     bool   // Debug flag
+	DebugFile string // File to write debug output to
 }
 
 // NewClient creates a new joke API client
@@ -35,10 +36,50 @@ func NewClient(debug ...bool) *Client {
 		isDebug = debug[0]
 	}
 
-	return &Client{
-		BaseURL: "https://v2.jokeapi.dev/joke",
-		Timeout: 5 * time.Second,
-		Debug:   isDebug,
+	client := &Client{
+		BaseURL:   "https://v2.jokeapi.dev/joke",
+		Timeout:   5 * time.Second,
+		Debug:     isDebug,
+		DebugFile: "joke_api_debug.log",
+	}
+
+	// Initialize debug writer if debug is enabled
+	if isDebug {
+		// Create or truncate debug file
+		file, err := os.OpenFile(client.DebugFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err == nil {
+			// Write header to debug file
+			file.WriteString("=== Joke API Debug Log ===\n\n")
+			file.Close()
+		}
+	}
+
+	return client
+}
+
+// writeDebug writes debug output to the specified file
+func (c *Client) writeDebug(format string, args ...interface{}) {
+	if !c.Debug {
+		return
+	}
+
+	// Open file in append mode
+	file, err := os.OpenFile(c.DebugFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	// Write timestamp
+	timestamp := time.Now().Format("15:04:05.000")
+	fmt.Fprintf(file, "%s[%s] %s", resetColor, timestamp, boldText)
+
+	// Write formatted message
+	fmt.Fprintf(file, format, args...)
+
+	// Add newline if not present
+	if !strings.HasSuffix(format, "\n") {
+		file.WriteString("\n")
 	}
 }
 
@@ -69,11 +110,25 @@ func (c *Client) FetchJoke(input string) (string, error) {
 	}
 
 	// Check for blacklist flags
-	blacklistOptions := []string{"nsfw", "religious", "political", "racist", "sexist", "explicit"}
+	blacklistOptions := []string{"religious", "political", "racist", "sexist", "explicit"}
+	nsfw := false
+
+	// Check if NSFW is explicitly requested (expand patterns to check)
+	if strings.Contains(input, "nsfw") || strings.Contains(input, "dirty") ||
+		strings.Contains(input, "adult") || strings.Contains(input, "explicit") {
+		nsfw = true
+	}
+
+	// Add other blacklist flags, but not NSFW if it was requested
 	for _, flag := range blacklistOptions {
 		if strings.Contains(input, "no "+flag) || strings.Contains(input, "not "+flag) {
 			blacklistFlags = append(blacklistFlags, flag)
 		}
+	}
+
+	// Only blacklist NSFW if not explicitly requested
+	if !nsfw && (strings.Contains(input, "no nsfw") || strings.Contains(input, "not nsfw") || strings.Contains(input, "clean joke")) {
+		blacklistFlags = append(blacklistFlags, "nsfw")
 	}
 
 	// Construct URL with proper path parameters
@@ -96,7 +151,7 @@ func (c *Client) FetchJoke(input string) (string, error) {
 
 	// Debug output for request URL
 	if c.Debug {
-		fmt.Printf("%s%s[DEBUG REQUEST]%s %s\n", blueColor, boldText, resetColor, url)
+		c.writeDebug("REQUEST: %s\n", url)
 	}
 
 	// Create a context with a timeout
@@ -137,11 +192,9 @@ func (c *Client) FetchJoke(input string) (string, error) {
 		var prettyJSON bytes.Buffer
 		err = json.Indent(&prettyJSON, body, "", "  ")
 		if err != nil {
-			fmt.Printf("%s%s[DEBUG RESPONSE]%s %s\n", blueColor, boldText, resetColor, string(body))
+			c.writeDebug("RESPONSE (raw): %s\n", string(body))
 		} else {
-			fmt.Printf("%s%s[DEBUG RESPONSE]%s\n%s%s%s",
-				blueColor, boldText, resetColor,
-				blueColor, prettyJSON.String(), resetColor)
+			c.writeDebug("RESPONSE JSON:\n%s\n", prettyJSON.String())
 		}
 	}
 
