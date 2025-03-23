@@ -161,11 +161,11 @@ func fetchJoke(input string) (string, error) {
 }
 
 // simulateAIResponse is a placeholder for the help command
-func simulateAIResponse(msg string) string {
+func simulateAIResponse(msg string) tea.Msg {
 	if msg == "help" {
-		return helpMessage()
+		return jokeMsg(helpMessage())
 	}
-	return "AI: I received your message: \"" + msg + "\""
+	return jokeMsg("AI: I received your message: \"" + msg + "\"")
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -185,6 +185,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				input := m.textInput.Value()
 				m.textInput.Reset()
+
+				m.messages = append(m.messages, "AI: "+simulateAIResponse(input).(jokeMsg))
 
 				cmd = func() tea.Msg {
 					joke, err := fetchJoke(input)
