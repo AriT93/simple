@@ -222,10 +222,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 		m.processing = false
 		m.textInput.Focus()
-		return m, msg
-
-	case error:
-		m.err = msg
 		return m, nil
 
 	default:
