@@ -12,8 +12,11 @@ type model struct {
 }
 
 func initialModel() model {
+	ti := textinput.New()
+	ti.Placeholder = "Type your message here..."
+	ti.Focus()
 	return model{
-		textInput: textinput.New(),
+		textInput: ti,
 	}
 }
 
@@ -36,12 +39,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return fmt.Sprintf("Hey there! 👋\n\n%s", m.textInput.View())
+	return fmt.Sprintf("Hey there! 👋\n\n%s\n\nPress Ctrl+C or 'q' to quit.", m.textInput.View())
 }
 
 func main() {
 	p := tea.NewProgram(initialModel())
-	if err, _ := p.Run(); err != nil {
+	if err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 	}
 }
