@@ -15,11 +15,11 @@ import (
 )
 
 type model struct {
-	textInput textinput.Model
-	viewport  viewport.Model
-	messages  []string
-	err       error
-	spinner   spinner.Model
+	textInput  textinput.Model
+	viewport   viewport.Model
+	messages   []string
+	err        error
+	spinner    spinner.Model
 	processing bool
 }
 
@@ -37,10 +37,10 @@ func initialModel() model {
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	return model{
-		textInput: ti,
-		viewport:  vp,
-		messages:  []string{"Welcome to AI Agent! Type a message and press Enter to chat."},
-		spinner:   s,
+		textInput:  ti,
+		viewport:   vp,
+		messages:   []string{"Welcome to AI Agent! Type a message and press Enter to chat."},
+		spinner:    s,
 		processing: false,
 	}
 }
@@ -49,6 +49,14 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(textinput.Blink, m.spinner.Tick)
 }
 
+type jokeMsg string
+type errMsg struct {
+	err error
+}
+
+func (e errMsg) Error() string {
+	return e.err.Error()
+}
 
 // helpMessage provides instructions on how to use the Joke API
 func helpMessage() string {
@@ -82,38 +90,36 @@ type JokeResponse struct {
 		Sexist    bool `json:"sexist"`
 		Explicit  bool `json:"explicit"`
 	} `json:"flags"`
-	ID            int    `json:"id"`
-	Safe          bool   `json:"safe"`
-	Lang          string `json:"lang"`
+	ID   int    `json:"id"`
+	Safe bool   `json:"safe"`
+	Lang string `json:"lang"`
 }
 
 // fetchJoke fetches a joke from the JokeAPI and accepts flags
 func fetchJoke(input string) (string, error) {
 	// Extract keywords and flags
+	keywords := ""
 	flags := make(map[string]string)
 	parts := strings.Split(input, " ")
 
-	// Extract keywords (the words before any flags)
-	var keywordParts []string
 	for _, part := range parts {
 		if strings.Contains(part, "=") {
-			break
-		}
-		keywordParts = append(keywordParts, part)
-	}
-	keywords := strings.Join(keywordParts, " ")
-
-	// Extract flags
-	for _, part := range parts {
-		if strings.Contains(part, "=") {
+			// Parse flag
 			flagParts := strings.SplitN(part, "=", 2)
 			if len(flagParts) == 2 {
 				flags[flagParts[0]] = flagParts[1]
 			}
+		} else {
+			// Treat as keyword
+			if keywords == "" {
+				keywords = part
+			} else {
+				keywords += " " + part
+			}
 		}
 	}
 
-	// Construct the API URL
+	// Construct URL
 	url := "https://v2.jokeapi.dev/joke/Any"
 	params := []string{}
 
@@ -121,7 +127,6 @@ func fetchJoke(input string) (string, error) {
 		params = append(params, "contains="+keywords)
 	}
 
-	// Add flags to the parameters
 	for key, value := range flags {
 		params = append(params, key+"="+value)
 	}
@@ -181,65 +186,60 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case tea.KeyEnter:
 			if m.textInput.Value() != "" && !m.processing {
-				m.processing = true
-				m.textInput.Blur()
-				userMsg := "You: " + m.textInput.Value()
-				m.messages = append(m.messages, userMsg)
-
 				input := m.textInput.Value()
 				m.textInput.Reset()
 
+				// Handle help command
 				if input == "help" {
-					m.messages = append(m.messages, helpMessage())
-					m.processing = false
-					m.textInput.Focus()
-				} else if input == "quit" {
-					return m, tea.Quit
-				} else {
-					m.messages = append(m.messages, "AI: processing your request...")
-					cmd = func() tea.Msg {
-						joke, err := fetchJoke(input)
-						if err != nil {
-							return errMsg(err)
-						}
-						return jokeMsg(joke)
-					}
-					return m, cmd
+					m.messages = append(m.messages, "You: "+input)
+					m.messages = append(m.messages, string(simulateAIResponse(input).(jokeMsg)))
+					m.viewport.SetContent(strings.Join(m.messages, "\n"))
+					return m, nil
 				}
+
+				m.processing = true
+				m.textInput.Blur()
+
+				// Append the user's message to the messages
+				m.messages = append(m.messages, "You: "+input)
+
+				// Simulate AI response
+				m.messages = append(m.messages, "AI: Processing your request...")
+
+				// Update the viewport content
+				m.viewport.SetContent(strings.Join(m.messages, "\n"))
+
+				cmd = func() tea.Msg {
+					joke, err := fetchJoke(input)
+					if err != nil {
+						return errMsg{err}
+					}
+					return jokeMsg(joke)
+				}
+				return m, tea.Batch(cmd, m.spinner.Tick)
 			}
 		}
 	case jokeMsg:
-		m.messages = append(m.messages, "AI: "+string(msg))
-		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
-		m.viewport.GotoBottom()
 		m.processing = false
 		m.textInput.Focus()
-		return m, nil
-
+		m.messages = append(m.messages, string(msg))
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
 	case errMsg:
-		m.messages = append(m.messages, "Error fetching joke: "+msg.Error())
-		m.viewport.SetContent(strings.Join(m.messages, "\n\n"))
-		m.viewport.GotoBottom()
 		m.processing = false
 		m.textInput.Focus()
-		return m, nil
+		m.messages = append(m.messages, "Error: "+msg.Error())
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+	case spinner.TickMsg:
+		if m.processing {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+	}
 
-	default:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-
-	// Handle text input updates
 	m.textInput, cmd = m.textInput.Update(msg)
-
-	// Handle viewport updates (for scrolling)
-	m.viewport, _ = m.viewport.Update(msg)
-
-	if msg != nil {
+	return m, cmd
 }
-
-// Custom message types for handling joke and error responses
-type jokeMsg string
-type errMsg error
 
 func (m model) View() string {
 	if m.err != nil {
@@ -267,7 +267,7 @@ func (m model) View() string {
 
 func main() {
 	p := tea.NewProgram(initialModel())
-	if _, err := p.Run(); err != nil {
-		fmt.Println("Error running program:", err)
+	if err := p.Start(); err != nil {
+		fmt.Printf("Error: %v", err)
 	}
 }
