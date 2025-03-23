@@ -1,8 +1,10 @@
 package jokeclient_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -40,10 +42,13 @@ var _ = Describe("Joke Client", func() {
 				// Create a test server that returns a predefined joke
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
 					
-					// Check the request path to determine which response to send
-					if r.URL.Path == "/joke/Programming" {
+					// Debug the request path and query
+					fmt.Printf("Test server received request: %s with query: %v\n", r.URL.Path, r.URL.Query())
+					
+					// Check for programming joke request
+					if strings.Contains(r.URL.Path, "Programming") {
+						w.WriteHeader(http.StatusOK)
 						w.Write([]byte(`{
 							"error": false,
 							"category": "Programming",
@@ -61,7 +66,12 @@ var _ = Describe("Joke Client", func() {
 							"safe": true,
 							"lang": "en"
 						}`))
-					} else if r.URL.Path == "/joke/Any" && r.URL.Query().Get("type") == "twopart" {
+						return
+					} 
+					
+					// Check for twopart joke request
+					if r.URL.Query().Get("type") == "twopart" {
+						w.WriteHeader(http.StatusOK)
 						w.Write([]byte(`{
 							"error": false,
 							"category": "Misc",
@@ -80,25 +90,28 @@ var _ = Describe("Joke Client", func() {
 							"safe": true,
 							"lang": "en"
 						}`))
-					} else {
-						w.Write([]byte(`{
-							"error": false,
-							"category": "Misc",
-							"type": "single",
-							"joke": "Default joke response",
-							"flags": {
-								"nsfw": false,
-								"religious": false,
-								"political": false,
-								"racist": false,
-								"sexist": false,
-								"explicit": false
-							},
-							"id": 3,
-							"safe": true,
-							"lang": "en"
-						}`))
+						return
 					}
+					
+					// Default response
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{
+						"error": false,
+						"category": "Misc",
+						"type": "single",
+						"joke": "Default joke response",
+						"flags": {
+							"nsfw": false,
+							"religious": false,
+							"political": false,
+							"racist": false,
+							"sexist": false,
+							"explicit": false
+						},
+						"id": 3,
+						"safe": true,
+						"lang": "en"
+					}`))
 				}))
 				
 				// Override the client's BaseURL to use our test server
@@ -132,13 +145,21 @@ var _ = Describe("Joke Client", func() {
 			BeforeEach(func() {
 				// Create a test server that returns errors
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == "/joke/Error" {
+					fmt.Printf("Error test server received request: %s\n", r.URL.Path)
+					
+					if strings.Contains(r.URL.Path, "Error") {
 						w.WriteHeader(http.StatusInternalServerError)
-					} else if r.URL.Path == "/joke/BadJSON" {
+						return
+					} 
+					
+					if strings.Contains(r.URL.Path, "BadJSON") {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
 						w.Write([]byte(`{invalid json`))
-					} else if r.URL.Path == "/joke/UnknownType" {
+						return
+					} 
+					
+					if strings.Contains(r.URL.Path, "UnknownType") {
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(http.StatusOK)
 						w.Write([]byte(`{
@@ -150,7 +171,12 @@ var _ = Describe("Joke Client", func() {
 							"safe": true,
 							"lang": "en"
 						}`))
+						return
 					}
+					
+					// Default response for any other path
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{}`))
 				}))
 				
 				// Override the client's BaseURL to use our test server

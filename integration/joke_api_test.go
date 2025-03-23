@@ -14,9 +14,9 @@ var _ = Describe("Joke API Integration", func() {
 		client = jokeclient.NewClient()
 	})
 
-	// Mark these tests as pending by default since they hit the real API
-	// Use Focus (F) to run them when needed
-	PDescribe("Live API Tests", func() {
+	// These tests hit the real API
+	// Use --focus="Live API Tests" to run them
+	Describe("Live API Tests", func() {
 		It("should fetch a programming joke", func() {
 			joke, err := client.FetchJoke("Tell me a programming joke")
 			
