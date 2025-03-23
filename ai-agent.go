@@ -94,10 +94,6 @@ func fetchJoke(input string) (string, error) {
 	flags := make(map[string]string)
 	parts := strings.Split(input, " ")
 
-	// Extract keywords and flags
-	keywords := ""
-	flags := make(map[string]string)
-	parts := strings.Split(input, " ")
 
 	// Extract keywords (the words before any flags)
 	keywordParts := []string{}
