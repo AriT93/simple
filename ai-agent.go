@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -70,7 +71,19 @@ func initialModel() model {
 		if initError == nil {
 			// Initialize parser and enhancer chains
 			parserPrompt := prompts.NewPromptTemplate(
-				"Parse this user request for a joke: {{.input}}. Extract category, type and blacklist flags.",
+				`Parse this user request for a joke API: {{.input}}
+    
+    Extract these parameters:
+    - category: [programming, misc, dark, pun, spooky, christmas]
+    - type: [single, twopart]
+    - blacklist flags: [nsfw, religious, political, racist, sexist, explicit]
+    
+    For NSFW content, if user specifically requests NSFW jokes, do NOT include nsfw in blacklist.
+    
+    Format your response EXACTLY like this example (one line, no spaces around =):
+    category=programming&type=single&blacklist=religious,political
+    
+    Only include parameters that are specified or implied in the request.`,
 				[]string{"input"},
 			)
 			parser = chains.NewLLMChain(llm, parserPrompt)
@@ -138,12 +151,91 @@ LangChain features:
 `
 
 // Command to fetch a joke asynchronously
-func fetchJokeCmd(client *jokeclient.Client, input string) tea.Cmd {
+func fetchJokeCmd(client *jokeclient.Client, input string, model model) tea.Cmd {
 	return func() tea.Msg {
-		joke, err := client.FetchJoke(input)
+		var parsedInput string
+		var err error
+
+		// Use LangChain to parse input if available
+		if model.parser != nil && model.llm != nil {
+			// Log original input to debug
+			if client.Debug {
+				client.WriteDebug("========== LangChain Processing ==========\n")
+				client.WriteDebug("ORIGINAL INPUT: %s\n", input)
+			}
+
+			// Call LangChain parser
+			ctx := context.Background()
+			result, parseErr := chains.Call(ctx, model.parser, map[string]any{
+				"input": input,
+			})
+
+			if parseErr != nil {
+				// Log parsing error but continue with original input
+				if client.Debug {
+					client.WriteDebug("LANGCHAIN ERROR: %v\n", parseErr)
+				}
+				parsedInput = input
+			} else {
+				// Extract parsed text from LangChain result
+				if text, ok := result["text"].(string); ok {
+					parsedInput = strings.TrimSpace(text)
+
+					// Log the parsed result
+					if client.Debug {
+						client.WriteDebug("LANGCHAIN PARSED: %s\n", parsedInput)
+						client.WriteDebug("PARAMETERS EXTRACTED:\n")
+						params := strings.Split(parsedInput, "&")
+						for _, param := range params {
+							client.WriteDebug("  %s\n", param)
+						}
+					}
+				} else {
+					parsedInput = input
+					if client.Debug {
+						client.WriteDebug("LANGCHAIN OUTPUT FORMAT ERROR: Unable to extract text\n")
+					}
+				}
+			}
+		} else {
+			// Use original input if LangChain is not available
+			parsedInput = input
+		}
+
+		// Fetch joke with parsed input
+		joke, err := client.FetchJoke(parsedInput)
 		if err != nil {
 			return errorResponseMsg{err: err}
 		}
+
+		// Use LangChain to enhance joke if available
+		if model.enhancer != nil && model.llm != nil {
+			if client.Debug {
+				client.WriteDebug("ORIGINAL JOKE: %s\n", joke)
+			}
+
+			// Call LangChain enhancer
+			ctx := context.Background()
+			result, enhanceErr := chains.Call(ctx, model.enhancer, map[string]any{
+				"output": joke,
+			})
+
+			if enhanceErr == nil {
+				// Extract enhanced joke
+				if text, ok := result["text"].(string); ok {
+					enhancedJoke := strings.TrimSpace(text)
+
+					// Log enhanced joke
+					if client.Debug {
+						client.WriteDebug("ENHANCED JOKE: %s\n", enhancedJoke)
+					}
+
+					// Use enhanced joke
+					joke = enhancedJoke
+				}
+			}
+		}
+
 		return jokeResponseMsg{joke: joke}
 	}
 }
@@ -194,7 +286,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Initiate joke fetching
 			m.processing = true
-			return m, tea.Batch(fetchJokeCmd(m.jokeClient, input), m.spinner.Tick)
+			return m, tea.Batch(fetchJokeCmd(m.jokeClient, input, m), m.spinner.Tick)
 		}
 
 	case spinner.TickMsg:

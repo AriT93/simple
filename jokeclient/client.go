@@ -83,6 +83,24 @@ func (c *Client) writeDebug(format string, args ...interface{}) {
 	}
 }
 
+// WriteDebug writes debug output to the file with proper formatting
+func (c *Client) WriteDebug(format string, args ...interface{}) {
+	if !c.Debug {
+		return
+	}
+
+	c.writeDebug(format, args...)
+}
+
+// WriteDebugSeparator adds a visual separator to the debug log
+func (c *Client) WriteDebugSeparator(title string) {
+	if !c.Debug {
+		return
+	}
+
+	c.writeDebug("\n%s=== %s ===%s\n", boldText, title, resetColor)
+}
+
 // FetchJoke fetches a joke from the API based on the given parameters
 func (c *Client) FetchJoke(input string) (string, error) {
 	// Parse input to extract category and joke type
