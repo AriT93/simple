@@ -95,10 +95,15 @@ func fetchJoke(input string) (string, error) {
 	parts := strings.Split(input, " ")
 
 
-	// Extract keywords and flags
-	keywords := ""
-	flags := make(map[string]string)
-	parts := strings.Split(input, " ")
+	// Extract keywords (the words before any flags)
+	keywordParts := []string{}
+	for _, part := range parts {
+		if strings.Contains(part, "=") {
+			break // Stop at the first flag
+		}
+		keywordParts = append(keywordParts, part)
+	}
+	keywords = strings.Join(keywordParts, " ")
 
 	// Extract keywords (the entire input before any flags)
 	keywords = input
