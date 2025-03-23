@@ -186,30 +186,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		switch msg.String() {
+		case "ctrl+c", "esc", "q", "quit":
 			return m, tea.Quit
-		case tea.KeyEnter:
+		case "enter":
 			if m.textInput.Value() != "" && !m.processing {
 				input := m.textInput.Value()
 				m.textInput.Reset()
 
-				m.processing = true
-				m.textInput.Blur()
-
-				// Append the user's message to the messages
-				m.messages = append(m.messages, "You: "+input)
-
-				// Simulate AI response
 				// Handle help command
 				if input == "help" {
 					m.messages = append(m.messages, "You: "+input)
 					m.messages = append(m.messages, string(simulateAIResponse(input).(jokeMsg)))
 					m.viewport.SetContent(strings.Join(m.messages, "\n"))
-					m.processing = false
-					m.textInput.Focus()
 					return m, nil
 				}
+
+				m.processing = true
+				m.textInput.Blur()
 
 				// Append the user's message to the messages
 				m.messages = append(m.messages, "You: "+input)
@@ -245,9 +239,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
-		}
-	}
-
 	m.textInput, cmd = m.textInput.Update(msg)
 	return m, cmd
 }
